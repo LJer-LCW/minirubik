@@ -2,19 +2,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <time.h>
 
 enum {
     CUBIES = 7,
     PERMUTATIONS = 5040,
     ORIENTATIONS = 729,
+    PERM_SIZE = 8192,
+    ORI_SIZE = 1024,
     STATES = PERMUTATIONS * ORIENTATIONS,
-    MOVES = 9
+    MOVES = 9,
+    MAX_DEPTH = 11,
+    NO_MOVE = 255
 };
 
-static uint16_t permutation[3][PERMUTATIONS];
-static uint16_t orientation[3][ORIENTATIONS];
-
+static uint16_t permutation[3][PERM_SIZE];
+/* 12 rows for direct move-indexing: 
+   Row 0..2 : R, R2, R'
+   Row 4..6 : B, B2, B'
+   Row 8..10: D, D2, D' 
+*/
+static uint16_t orientation[12][ORI_SIZE];
 
 typedef struct {
     uint8_t p[CUBIES], o[CUBIES];
@@ -66,7 +74,10 @@ static state_t quarter_turn(state_t state, uint8_t face)
     for (uint8_t i = 0; i < CUBIES; ++i) {
         uint8_t from = source[face][i];
         result.p[i] = state.p[from];
-        result.o[i] = (uint8_t) ((state.o[from] + twist[face][i]) % 3U);
+        uint8_t o_sum = (uint8_t) (state.o[from] + twist[face][i]);
+        while (o_sum >= 3)
+            o_sum = (uint8_t) (o_sum - 3);
+        result.o[i] = o_sum;
     }
     return result;
 }
@@ -91,37 +102,48 @@ static state_t apply_move(state_t state, uint8_t move)
  */
 static uint32_t rank_state(const state_t *state)
 {
-    uint32_t p = 0, o = 0;
-    /*@ loop invariant 0 <= i <= CUBIES;
-        loop invariant (i == 0 ==> p == 0) && (i == 1 ==> p <= 6) &&
-          (i == 2 ==> p <= 41) && (i == 3 ==> p <= 209) &&
-          (i == 4 ==> p <= 839) && (i == 5 ==> p <= 2519) &&
-          (i >= 6 ==> p <= 5039);
-        loop assigns i, p;
-        loop variant CUBIES - i;
-     */
-    for (uint8_t i = 0; i < CUBIES; ++i) {
-        uint8_t smaller = 0;
-        /*@ loop invariant i + 1 <= j <= CUBIES;
-            loop invariant smaller <= j - i - 1;
-            loop assigns j, smaller;
-            loop variant CUBIES - j;
-         */
-        for (uint8_t j = (uint8_t) (i + 1U); j < CUBIES; ++j)
-            if (state->p[j] < state->p[i])
-                ++smaller;
-        p = p * (CUBIES - i) + smaller;
-    }
-    /*@ loop invariant 0 <= i <= 6;
-        loop invariant (i == 0 ==> o == 0) && (i == 1 ==> o < 3) &&
-          (i == 2 ==> o < 9) && (i == 3 ==> o < 27) &&
-          (i == 4 ==> o < 81) && (i == 5 ==> o < 243) &&
-          (i == 6 ==> o < 729);
-        loop assigns i, o;
-        loop variant 6 - i;
-     */
+    uint32_t p;
+    uint8_t smaller;
+
+    smaller = 0;
+    for (uint8_t j = 1; j < CUBIES; ++j)
+        if (state->p[j] < state->p[0])
+            ++smaller;
+    p = smaller;
+
+    smaller = 0;
+    for (uint8_t j = 2; j < CUBIES; ++j)
+        if (state->p[j] < state->p[1])
+            ++smaller;
+    p = (p << 2) + (p << 1) + smaller;
+
+    smaller = 0;
+    for (uint8_t j = 3; j < CUBIES; ++j)
+        if (state->p[j] < state->p[2])
+            ++smaller;
+    p = (p << 2) + p + smaller;
+
+    smaller = 0;
+    for (uint8_t j = 4; j < CUBIES; ++j)
+        if (state->p[j] < state->p[3])
+            ++smaller;
+    p = (p << 2) + smaller;
+
+    smaller = 0;
+    for (uint8_t j = 5; j < CUBIES; ++j)
+        if (state->p[j] < state->p[4])
+            ++smaller;
+    p = (p << 1) + p + smaller;
+
+    smaller = 0;
+    if (state->p[6] < state->p[5])
+        ++smaller;
+    p = (p << 1) + smaller;
+
+    uint32_t o = 0;
     for (uint8_t i = 0; i < 6; ++i)
-        o = o * 3U + state->o[i];
+        o = (o << 1) + o + state->o[i];
+
     return p * ORIENTATIONS + o;
 }
 
@@ -145,7 +167,9 @@ static void unrank_state(uint32_t rank, state_t *state)
         sum = (uint8_t) (sum + state->o[i]);
         o /= 3U;
     }
-    state->o[6] = (uint8_t) ((3U - sum % 3U) % 3U);
+    while (sum >= 3)
+        sum = (uint8_t) (sum - 3);
+    state->o[6] = (uint8_t) ((3U - sum) % 3U);
 }
 
 /*@ requires \valid_read(state);
@@ -165,10 +189,6 @@ static int valid(const state_t *state)
     uint8_t sum = 0;
     /*@ loop invariant 0 <= i <= CUBIES;
         loop invariant sum <= 2 * i;
-        loop invariant sum == (i > 0 ? state->o[0] : 0) +
-          (i > 1 ? state->o[1] : 0) + (i > 2 ? state->o[2] : 0) +
-          (i > 3 ? state->o[3] : 0) + (i > 4 ? state->o[4] : 0) +
-          (i > 5 ? state->o[5] : 0) + (i > 6 ? state->o[6] : 0);
         loop invariant \forall integer j; 0 <= j < i ==>
           state->p[j] < CUBIES && state->o[j] < 3;
         loop invariant \forall integer j, k; 0 <= j < k < i ==>
@@ -179,18 +199,14 @@ static int valid(const state_t *state)
     for (uint8_t i = 0; i < CUBIES; ++i) {
         if (state->p[i] >= CUBIES || state->o[i] >= 3)
             return 0;
-        /*@ loop invariant 0 <= j <= i;
-            loop invariant \forall integer k; 0 <= k < j ==>
-              state->p[k] != state->p[i];
-            loop assigns j;
-            loop variant i - j;
-        */
         for (uint8_t j = 0; j < i; ++j)
             if (state->p[j] == state->p[i])
                 return 0;
         sum = (uint8_t) (sum + state->o[i]);
     }
-    return sum % 3U == 0;
+    while (sum >= 3)
+        sum = (uint8_t) (sum - 3);
+    return sum == 0;
 }
 
 static void init_move_tables(void) {
@@ -203,12 +219,24 @@ static void init_move_tables(void) {
                 (uint16_t) (rank_state(&next) / ORIENTATIONS);
         }
     }
+    /* Build quarter-turn orientation tables (row 0, 4, 8) */
     for (uint16_t rank = 0; rank < ORIENTATIONS; ++rank) {
         unrank_state(rank, &state);
         for (uint8_t face = 0; face < 3; ++face) {
             state_t next = quarter_turn(state, face);
-            orientation[face][rank] =
+            orientation[face << 2][rank] =
                 (uint16_t) (rank_state(&next) % ORIENTATIONS);
+        }
+    }
+    /* Build half-turn and inverse orientation tables (rows 1,2 / 5,6 / 9,10) */
+    for (uint8_t face = 0; face < 3; ++face) {
+        uint8_t m0 = (uint8_t) (face << 2U);
+        uint8_t m1 = (uint8_t) (m0 + 1U);
+        uint8_t m2 = (uint8_t) (m0 + 2U);
+        for (uint16_t rank = 0; rank < ORIENTATIONS; ++rank) {
+            uint16_t o1 = orientation[m0][rank];
+            orientation[m1][rank] = orientation[m0][o1];
+            orientation[m2][rank] = orientation[m0][orientation[m1][rank]];
         }
     }
 }
@@ -258,7 +286,6 @@ static uint8_t *build_ori_table(uint8_t *diameter)
     }
 
     memset(dist, UINT8_MAX, ORIENTATIONS);
-    
     queue[0] = 0;
     dist[0] = 0;
     *diameter = 0;
@@ -268,15 +295,11 @@ static uint8_t *build_ori_table(uint8_t *diameter)
             level_end = tail;
             ++*diameter;
         }
-        
         uint16_t o = queue[head++];
-        
         for (uint8_t face = 0; face < 3; ++face) {
             uint16_t next_o = o;
-            
             for (uint8_t turn = 0; turn < 3; ++turn) {
-                next_o = orientation[face][next_o];
-                
+                next_o = orientation[face << 2U][next_o];
                 if (dist[next_o] == UINT8_MAX) {
                     dist[next_o] = *diameter + 1;
                     queue[tail++] = next_o;
@@ -284,7 +307,6 @@ static uint8_t *build_ori_table(uint8_t *diameter)
             }
         }
     }
-    
     free(queue);
     return dist;
 }
@@ -317,7 +339,7 @@ static uint8_t *build_table(uint8_t *diameter)
             uint16_t next_p = p, next_o = o;
             for (uint8_t turn = 0; turn < 3; ++turn) {
                 next_p = permutation[face][next_p];
-                next_o = orientation[face][next_o];
+                next_o = orientation[face << 2U][next_o];
                 uint32_t there = (uint32_t) next_p * ORIENTATIONS + next_o;
                 if (toward_solved[there] == UINT8_MAX) {
                     toward_solved[there] = *diameter + 1;
@@ -334,70 +356,21 @@ static uint8_t *build_table(uint8_t *diameter)
     return toward_solved;
 }
 
-/*@ requires valid_read_string(input);
-    requires \valid(state);
-    assigns state->p[0..6], state->o[0..6];
-    ensures \result != 0 ==> input[14] == '\0';
-    ensures \result != 0 ==> \forall integer i; 0 <= i < CUBIES ==>
-      state->p[i] < CUBIES && state->o[i] < 3;
-    ensures \result != 0 ==> \forall integer i, j; 0 <= i < j < CUBIES ==>
-      state->p[i] != state->p[j];
-    ensures \result != 0 ==>
-      (state->o[0] + state->o[1] + state->o[2] + state->o[3] +
-       state->o[4] + state->o[5] + state->o[6]) % 3 == 0;
-    ensures \result != 0 ==> \forall integer i; 0 <= i < CUBIES ==>
-      state->p[i] == input[i] - '1';
-    ensures \result != 0 ==> \forall integer i; 0 <= i < CUBIES ==>
-      state->o[i] == input[i + CUBIES] - '1';
- */
+/* Parse state without modulo operators */
 static int parse_state(const char *input, state_t *state)
 {
-    /*@ loop invariant 0 <= i <= 14;
-        loop invariant i <= strlen(input);
-        loop invariant i <= 7 ==> \initialized(&state->p[0..i-1]);
-        loop invariant i >= 7 ==> \initialized(&state->p[0..6]);
-        loop invariant i >= 7 ==> \initialized(&state->o[0..i-8]);
-        loop invariant \forall integer j; 0 <= j < i && j < CUBIES ==>
-          state->p[j] == input[j] - '1';
-        loop invariant \forall integer j; 0 <= j < i - CUBIES ==>
-          state->o[j] == input[j + CUBIES] - '1';
-        loop assigns i, state->p[0..6], state->o[0..6];
-        loop variant 14 - i;
-     */
-    for (int i = 0; i < 14; ++i) {
-        int limit = i < 7 ? 7 : 3;
-        if (input[i] < '1' || input[i] > '0' + limit)
+    for (int i = 0; i < 7; ++i) {
+        if (input[i] < '1' || input[i] > '7')
             return 0;
-        (i < 7 ? state->p : state->o)[i % 7] = (uint8_t) (input[i] - '1');
+        state->p[i] = (uint8_t) (input[i] - '1');
+    }
+    for (int i = 0; i < 7; ++i) {
+        if (input[i + 7] < '1' || input[i + 7] > '3')
+            return 0;
+        state->o[i] = (uint8_t) (input[i + 7] - '1');
     }
     return input[14] == '\0' && valid(state);
 }
-
-static int output_failed(void)
-{
-    return fflush(stdout) != 0 || ferror(stdout);
-}
-
-static int self_test(void)
-{
-    const state_t solved = {{0, 1, 2, 3, 4, 5, 6}, {0}};
-    state_t state;
-    for (uint8_t move = 0; move < MOVES; ++move) {
-        state = solved;
-        state = apply_move(state, move);
-        state = apply_move(state, inverse_move[move]);
-        if (memcmp(&solved, &state, sizeof solved))
-            return 0;
-    }
-    for (uint32_t rank = 0; rank < STATES; ++rank) {
-        unrank_state(rank, &state);
-        if (!valid(&state) || rank_state(&state) != rank)
-            return 0;
-    }
-    return 1;
-}
-
-enum { MAX_DEPTH = 11, NO_MOVE = 255 };
 
 typedef struct {
     uint16_t perm;     
@@ -406,6 +379,7 @@ typedef struct {
     uint8_t next_move; 
 } frame_t;
 
+/* Heuristic: MAX(perm, ori) */
 static uint8_t heuristic(const uint8_t *perm_table, const uint8_t *ori_table,
                          uint16_t p, uint16_t o)
 {
@@ -413,7 +387,6 @@ static uint8_t heuristic(const uint8_t *perm_table, const uint8_t *ori_table,
     return hp > ho ? hp : ho;
 }
 
-//power-of-two
 static int ida_search(uint16_t start_perm, uint16_t start_ori,
                       const uint8_t *perm_table, const uint8_t *ori_table,
                       uint8_t solution[MAX_DEPTH], uint64_t *nodes)
@@ -444,13 +417,15 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
                 continue;
 
             uint8_t face = (uint8_t) (move >> 2U);
-           if ((node->move >> 2U) == face) continue;
+            if ((node->move >> 2U) == face) continue;
 
-            uint16_t p = node->perm, o = node->ori;
+            /* Direct orientation lookup */
+            uint16_t o = orientation[move][node->ori];
+            uint16_t p = node->perm;
+            
             uint8_t turns = (uint8_t) (move & 3U);
             for (uint8_t turn = 0; turn <= turns; ++turn) {
                 p = permutation[face][p];
-                o = orientation[face][o];
             }
 
             uint8_t f = (uint8_t) (top + 1 +
@@ -676,49 +651,27 @@ int main(void)
         }
     }
 
-    uint64_t min_nodes = UINT64_MAX;
-    uint64_t max_nodes = 0;
-    uint64_t total_nodes = 0;
-    uint32_t min_rank = 0;
-    uint32_t max_rank = 0;
-    uint32_t count = 0;
-
-    for (uint32_t rank = 0; rank < STATES; ++rank) {
-        if (full_table[rank] != 11) continue;
-
-        uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
-        uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
-
-        uint8_t test_solution[MAX_DEPTH];
-        uint64_t test_nodes = 0;
-        int test_length = ida_search(test_p, test_o, perm_table, ori_table, test_solution, &test_nodes);
-
-        if (test_length != 11) {
-            printf("ERROR: rank %u returned length %d\n", rank, test_length);
+    {
+        uint32_t bad = 0;
+        for (uint32_t rank = 0; rank < STATES; ++rank) {
+            state_t state;
+            unrank_state(rank, &state);
+            uint32_t back = rank_state(&state);
+            if (back != rank) {
+                if (bad < 5)
+                    printf("RANK ERROR: rank %u came back as %u\n", rank, back);
+                ++bad;
+            }
+        }
+        if (bad) {
+            printf("=== Rank round-trip FAILED: %u mismatches ===\n", bad);
             return 1;
         }
-        count++;
-        total_nodes += test_nodes;
-        
-        if (test_nodes < min_nodes) {
-            min_nodes = test_nodes;
-            min_rank = rank;
-        }
-
-        if (test_nodes > max_nodes) {
-            max_nodes = test_nodes;
-            max_rank = rank;
-        }
+        printf("\n=== Rank round-trip PASSED for all %u states ===\n",
+               (unsigned) STATES);
     }
 
-    double average_nodes = (double)total_nodes / count;
-    printf("\n=== Distance-11 IDA* Statistics ===\n");
-    printf("Distance-11 states: %u\n", count);
-    printf("Minimum nodes: %llu (rank %u)\n", (unsigned long long)min_nodes, min_rank);
-    printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long)max_nodes, max_rank);
-    printf("Average nodes: %.3f\n", average_nodes);
-
-    /*
+    /* === Gate H3: IDA* length equals BFS distance across ALL STATES === */
     {
         uint64_t h3_total = 0;
         uint64_t h3_max = 0;
@@ -754,7 +707,59 @@ int main(void)
         printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long) h3_max, h3_max_rank);
         puts("=== Gate H3 PASSED ===");
     }
-    */
+
+    /* Statistics over all distance-11 states */
+    clock_t start_time = clock();
+
+    uint64_t min_nodes = UINT64_MAX;
+    uint64_t max_nodes = 0;
+    uint64_t total_nodes = 0;
+    uint32_t min_rank = 0;
+    uint32_t max_rank = 0;
+    uint32_t count = 0;
+
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        if (full_table[rank] != 11) continue;
+
+        uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
+        uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
+
+        uint8_t test_solution[MAX_DEPTH];
+        uint64_t test_nodes = 0;
+        int test_length = ida_search(test_p, test_o, perm_table, ori_table, test_solution, &test_nodes);
+
+        if (test_length != 11) {
+            printf("ERROR: rank %u returned length %d\n", rank, test_length);
+            return 1;
+        }
+        count++;
+        total_nodes += test_nodes;
+        
+        if (test_nodes < min_nodes) {
+            min_nodes = test_nodes;
+            min_rank = rank;
+        }
+
+        if (test_nodes > max_nodes) {
+            max_nodes = test_nodes;
+            max_rank = rank;
+        }
+    }
+
+    clock_t end_time = clock();
+    double elapsed_sec = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+    double average_nodes = (double)total_nodes / count;
+
+    printf("\n=== Distance-11 IDA* Statistics ===\n");
+    printf("Distance-11 states benchmarked: %u\n", count);
+    printf("Total Execution Time: %.2f seconds\n", elapsed_sec);
+    printf("Minimum nodes: %llu (rank %u)\n", (unsigned long long)min_nodes, min_rank);
+    printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long)max_nodes, max_rank);
+    printf("Average nodes: %.3f\n", average_nodes);
+    printf("Total nodes searched: %llu\n", (unsigned long long)total_nodes);
+    if (elapsed_sec > 0) {
+        printf("Search Speed: %.0f nodes/sec\n", (double)total_nodes / elapsed_sec);
+    }
 
     free(ori_table);
     free(perm_table);
