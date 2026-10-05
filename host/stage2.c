@@ -682,6 +682,47 @@ int main(void)
     // 6. Test IDA* Search Algorithm
     // ==========================================
 
+        puts("\n=== Testing IDA* Search ===");
+    {
+        const state_t solved = {{0, 1, 2, 3, 4, 5, 6}, {0}};
+        state_t tests[3];
+        const char *names[3] = {"Solved state", "One R move",
+                                "Input 21345671111111"};
+        const int expected[3] = {0, 1, 11};
+
+        tests[0] = solved;
+        tests[1] = apply_move(solved, 0); /* move 0 is R */
+        if (!parse_state("21345671111111", &tests[2])) {
+            puts("ERROR: cannot parse 21345671111111");
+            return 1;
+        }
+
+        for (int t = 0; t < 3; ++t) {
+            uint32_t rank = rank_state(&tests[t]);
+            uint8_t solution[MAX_DEPTH];
+            uint64_t nodes = 0;
+            int length = ida_search((uint16_t) (rank / ORIENTATIONS),
+                                    (uint16_t) (rank % ORIENTATIONS),
+                                    perm_table, ori_table, solution, &nodes);
+
+            printf("Test %d: %s (rank %u)\n", t + 1, names[t], rank);
+            printf("  Nodes: %llu\n", (unsigned long long) nodes);
+            printf("  Steps: %d (expected %d)\n", length, expected[t]);
+            printf("  Solution:");
+            for (int i = 0; i < length; ++i)
+                printf(" %s", move_names[solution[i]]);
+            puts("");
+
+            /* replay the solution and check that it reaches the solved state */
+            state_t replay = tests[t];
+            for (int i = 0; i < length; ++i)
+                replay = apply_move(replay, solution[i]);
+            if (length != expected[t] || memcmp(&replay, &solved, sizeof solved)) {
+                puts("  ERROR: wrong length or solution does not reach solved");
+                return 1;
+            }
+        }
+    }
 
     uint64_t min_nodes = UINT64_MAX;
     uint64_t max_nodes = 0;
