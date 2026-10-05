@@ -3,3 +3,5 @@
 *.swp
 solver
 mini
+host/stage2
+host/stage3
