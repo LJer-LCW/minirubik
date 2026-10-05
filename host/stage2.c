@@ -412,6 +412,98 @@ static int self_test(void)
     }
     return 1;
 }
+/* Iterative-deepening search, written from the student's specification:
+ *  - a node is (permutation rank, orientation rank); moves are table lookups
+ *  - h = max(perm_table[p], ori_table[o])
+ *  - a move on the same face as the previous move is skipped
+ *  - the stack holds the current path only; each frame records the move that
+ *    led to it and the next move to try
+ *  - a child is pushed only if f = g + h <= limit; otherwise f is remembered
+ *    so that the next limit is the smallest f that exceeded the current one
+ *  - the goal test and the node count happen when a node is entered
+ *  - moves are tried in the fixed order 0..8; the search stops above 11
+ */
+enum { MAX_DEPTH = 11, NO_MOVE = 255 };
+
+typedef struct {
+    uint16_t perm;     /* permutation rank of this node */
+    uint16_t ori;      /* orientation rank of this node */
+    uint8_t move;      /* move that led to this node, NO_MOVE for the root */
+    uint8_t next_move; /* next move to try from this node, 0..MOVES */
+} frame_t;
+
+static uint8_t heuristic(const uint8_t *perm_table, const uint8_t *ori_table,
+                         uint16_t p, uint16_t o)
+{
+    uint8_t hp = perm_table[p], ho = ori_table[o];
+    return hp > ho ? hp : ho;
+}
+
+/* Returns the solution length and fills solution[0..length-1] with move
+ * numbers, or returns -1 if no solution is found within MAX_DEPTH.
+ * *nodes receives the number of nodes entered over all iterations.
+ */
+static int ida_search(uint16_t start_perm, uint16_t start_ori,
+                      const uint8_t *perm_table, const uint8_t *ori_table,
+                      uint8_t solution[MAX_DEPTH], uint64_t *nodes)
+{
+    frame_t stack[MAX_DEPTH + 1];
+    uint8_t limit = heuristic(perm_table, ori_table, start_perm, start_ori);
+    *nodes = 0;
+
+    while (limit <= MAX_DEPTH) {
+        uint8_t next_limit = UINT8_MAX;
+        int top = 0;
+        stack[0].perm = start_perm;
+        stack[0].ori = start_ori;
+        stack[0].move = NO_MOVE;
+        stack[0].next_move = 0;
+        ++*nodes;
+        if (start_perm == 0 && start_ori == 0)
+            return 0;
+
+        while (top >= 0) {
+            frame_t *node = &stack[top];
+            if (node->next_move >= MOVES) { /* all moves tried: go back up */
+                --top;
+                continue;
+            }
+            uint8_t move = node->next_move++;
+            uint8_t face = (uint8_t) (move / 3U);
+            if (node->move != NO_MOVE && node->move / 3U == face)
+                continue; /* same face as the previous move */
+
+            uint16_t p = node->perm, o = node->ori;
+            for (uint8_t turn = 0; turn <= move % 3U; ++turn) {
+                p = permutation[face][p];
+                o = orientation[face][o];
+            }
+
+            /* g of the child is top + 1 */
+            uint8_t f = (uint8_t) (top + 1 +
+                                   heuristic(perm_table, ori_table, p, o));
+            if (f > limit) {
+                if (f < next_limit)
+                    next_limit = f;
+                continue;
+            }
+
+            ++top;
+            stack[top].perm = p;
+            stack[top].ori = o;
+            stack[top].move = move;
+            stack[top].next_move = 0;
+            ++*nodes;
+            if (p == 0 && o == 0) {
+                for (int i = 1; i <= top; ++i)
+                    solution[i - 1] = stack[i].move;
+                return top;
+            }
+        }
+        limit = next_limit; /* UINT8_MAX if nothing was pruned: loop ends */
+    }
+    return -1;
+}
 
 int main(void)
 {
@@ -586,8 +678,63 @@ int main(void)
         puts("=== SUM(perm, ori) H1 Check FAILED (As expected: Not Admissible) ===");
     }
 
-    // Free all memory at the very end
+// ==========================================
+    // 6. Test IDA* Search Algorithm
+    // ==========================================
+
+
+    uint64_t min_nodes = UINT64_MAX;
+    uint64_t max_nodes = 0;
+    uint64_t total_nodes = 0;
+    uint32_t min_rank = 0;
+    uint32_t max_rank = 0;
+    uint32_t count = 0;
+
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+    // step 1：d= 11 , skip states whose distance is not 11
+    if (full_table[rank] != 11) continue;
+
+    // step 2: rank -> perm and orientation 
+    uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
+    uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
+
+    // step 3：call ida_search
+    uint8_t test_solution[MAX_DEPTH];
+    uint64_t test_nodes = 0;
+    int test_length = ida_search(test_p, test_o, perm_table, ori_table,test_solution,&test_nodes);
+
+    // step 4 : update 6 variables
+    if (test_length != 11) {
+    printf("ERROR: rank %u returned length %d\n", rank, test_length);
+    return 1;
+    }
+    count++;
+    total_nodes += test_nodes;
+    
+    if (test_nodes < min_nodes) {
+        min_nodes = test_nodes;
+        min_rank = rank;
+    }
+
+    if (test_nodes > max_nodes) {
+        max_nodes = test_nodes;
+        max_rank = rank;
+    }
+}
+// print result
+double average_nodes = (double)total_nodes / count;
+printf("\n=== Distance-11 IDA* Statistics ===\n");
+printf("Distance-11 states: %u\n", count);
+printf("Minimum nodes: %llu (rank %u)\n", (unsigned long long)min_nodes, min_rank);
+printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long)max_nodes, max_rank);
+printf("Average nodes: %.3f\n", average_nodes);
+
+
+    // Free all memory 
     free(ori_table);
     free(perm_table);
     free(full_table);
+
+    return 0;
+
 }
