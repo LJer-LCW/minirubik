@@ -245,6 +245,63 @@ static uint8_t *build_perm_table(uint8_t *diameter)
     return dist;
 }
 
+static uint8_t *build_ori_table(uint8_t *diameter)
+{
+    /* Allocate memory for the distance table and the BFS queue */
+    uint8_t *dist = malloc(ORIENTATIONS);
+    uint16_t *queue = malloc(ORIENTATIONS * sizeof(*queue));
+    uint16_t head = 0, tail = 1, level_end = 1;
+
+    /* Handle potential memory allocation failure */
+    if (!dist || !queue) {
+        free(dist);
+        free(queue);
+        return NULL;
+    }
+
+    /* Initialize all distances to maximum (unreachable) */
+    memset(dist, UINT8_MAX, ORIENTATIONS);
+    
+    /* Rank 0 is the solved orientation state */
+    queue[0] = 0;
+    dist[0] = 0;
+    *diameter = 0;
+
+    /* Breadth-First Search (BFS) to compute minimum moves to solve */
+    while (head < tail) {
+        /* When the head reaches the end of the current depth level, 
+         * increment the diameter (distance from solved state) 
+         */
+        if (head == level_end) {
+            level_end = tail;
+            ++*diameter;
+        }
+        
+        uint16_t o = queue[head++];
+        
+        /* Iterate through all 3 available faces */
+        for (uint8_t face = 0; face < 3; ++face) {
+            uint16_t next_o = o;
+            
+            /* Apply 1, 2, and 3 quarter-turns (90°, 180°, 270°) */
+            for (uint8_t turn = 0; turn < 3; ++turn) {
+                next_o = orientation[face][next_o];
+                
+                /* If this orientation state hasn't been visited yet, 
+                 * record its shortest distance and add it to the queue 
+                 */
+                if (dist[next_o] == UINT8_MAX) {
+                    dist[next_o] = *diameter + 1;
+                    queue[tail++] = next_o;
+                }
+            }
+        }
+    }
+    
+    free(queue);
+    return dist;
+}
+
 static uint8_t *build_table(uint8_t *diameter)
 {
     uint8_t *toward_solved = malloc(STATES);
@@ -441,9 +498,96 @@ int main(void)
         puts("=== Gate H1 Check PASSED: h(s) <= d(s) for all 3,674,160 states ===");
     }
 
-    // 4. Free both tables at the very end
+   // 4. Build and calculate Orientation Distance Table
+    uint8_t ori_diameter;
+    uint8_t *ori_table = build_ori_table(&ori_diameter);
+
+    if (!ori_table) {
+        fputs("Failed to build ori table\n", stderr);
+        free(perm_table);
+        free(full_table);
+        return 1;
+    }
+
+    uint32_t ori_counts[12] = {0}; 
+    uint64_t ori_sum = 0;
+
+    for (uint32_t i = 0; i < ORIENTATIONS; ++i) { // Make sure ORIENTATIONS is defined
+        uint8_t d = ori_table[i];
+        if (d < 12) {
+            ori_counts[d]++;
+            ori_sum += d;
+        }
+    }
+    puts("=== Orientation Distance Distribution ===");
+    for (int i = 0; i <= ori_diameter; ++i) {
+        printf("Distance %2d: %7u states\n", i, ori_counts[i]);
+    }
+
+    printf("Orientation Max distance (Diameter): %d\n", ori_diameter);
+    double ori_avg = (double)ori_sum / ORIENTATIONS;
+    printf("Orientation Average distance: %.3f\n\n", ori_avg);
+
+
+    // 5. Test H1 and combination strategies (Max vs. Sum)
+    int ori_h1_passed = 1;
+    int max_h1_passed = 1;
+    int sum_h1_passed = 1;
+    
+    uint64_t max_sum = 0; // Track total distance for Max strategy
+
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        uint8_t true_d = full_table[rank];
+        
+        // Extract permutation and orientation ranks
+        uint16_t perm_rank = (uint16_t)(rank / ORIENTATIONS);
+        uint16_t ori_rank = (uint16_t)(rank % ORIENTATIONS);
+        
+        uint8_t h_perm = perm_table[perm_rank];
+        uint8_t h_ori = ori_table[ori_rank];
+        
+        // Calculate both combinations
+        uint8_t h_max = (h_perm > h_ori) ? h_perm : h_ori;
+        uint8_t h_sum = h_perm + h_ori;
+        
+        max_sum += h_max;
+
+        // Check if orientation table alone passes H1
+        if (h_ori > true_d && ori_h1_passed) {
+            printf("Orientation H1 FAILED at rank %u: h_ori(%u) = %u > true_d(%u)\n", 
+                   rank, ori_rank, h_ori, true_d);
+            ori_h1_passed = 0;
+        }
+        
+        // Check if Max combination passes H1
+        if (h_max > true_d && max_h1_passed) {
+            printf("MAX H1 FAILED at rank %u\n", rank);
+            max_h1_passed = 0;
+        }
+        
+        // Check if Sum combination passes H1 (print once on first failure)
+        if (h_sum > true_d && sum_h1_passed) {
+            printf("SUM H1 FAILED at rank %u: h_perm(%u) + h_ori(%u) = %u > true_d = %u\n", 
+                   rank, h_perm, h_ori, h_sum, true_d);
+            sum_h1_passed = 0;
+        }
+    }
+
+    if (ori_h1_passed) puts("=== Orientation H1 Check PASSED ===");
+    
+    if (max_h1_passed) {
+        puts("=== MAX(perm, ori) H1 Check PASSED ===");
+        printf("MAX Average distance: %.3f\n", (double)max_sum / STATES);
+    }
+    
+    if (sum_h1_passed) {
+        puts("=== SUM(perm, ori) H1 Check PASSED ===");
+    } else {
+        puts("=== SUM(perm, ori) H1 Check FAILED (As expected: Not Admissible) ===");
+    }
+
+    // Free all memory at the very end
+    free(ori_table);
     free(perm_table);
     free(full_table);
-
-    return h1_passed ? 0 : 1;
 }
