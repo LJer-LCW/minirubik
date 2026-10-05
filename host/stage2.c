@@ -247,31 +247,23 @@ static uint8_t *build_perm_table(uint8_t *diameter)
 
 static uint8_t *build_ori_table(uint8_t *diameter)
 {
-    /* Allocate memory for the distance table and the BFS queue */
     uint8_t *dist = malloc(ORIENTATIONS);
     uint16_t *queue = malloc(ORIENTATIONS * sizeof(*queue));
     uint16_t head = 0, tail = 1, level_end = 1;
 
-    /* Handle potential memory allocation failure */
     if (!dist || !queue) {
         free(dist);
         free(queue);
         return NULL;
     }
 
-    /* Initialize all distances to maximum (unreachable) */
     memset(dist, UINT8_MAX, ORIENTATIONS);
     
-    /* Rank 0 is the solved orientation state */
     queue[0] = 0;
     dist[0] = 0;
     *diameter = 0;
 
-    /* Breadth-First Search (BFS) to compute minimum moves to solve */
     while (head < tail) {
-        /* When the head reaches the end of the current depth level, 
-         * increment the diameter (distance from solved state) 
-         */
         if (head == level_end) {
             level_end = tail;
             ++*diameter;
@@ -279,17 +271,12 @@ static uint8_t *build_ori_table(uint8_t *diameter)
         
         uint16_t o = queue[head++];
         
-        /* Iterate through all 3 available faces */
         for (uint8_t face = 0; face < 3; ++face) {
             uint16_t next_o = o;
             
-            /* Apply 1, 2, and 3 quarter-turns (90°, 180°, 270°) */
             for (uint8_t turn = 0; turn < 3; ++turn) {
                 next_o = orientation[face][next_o];
                 
-                /* If this orientation state hasn't been visited yet, 
-                 * record its shortest distance and add it to the queue 
-                 */
                 if (dist[next_o] == UINT8_MAX) {
                     dist[next_o] = *diameter + 1;
                     queue[tail++] = next_o;
@@ -346,6 +333,7 @@ static uint8_t *build_table(uint8_t *diameter)
     }
     return toward_solved;
 }
+
 /*@ requires valid_read_string(input);
     requires \valid(state);
     assigns state->p[0..6], state->o[0..6];
@@ -385,10 +373,6 @@ static int parse_state(const char *input, state_t *state)
     return input[14] == '\0' && valid(state);
 }
 
-/* stdout is fully buffered off a terminal, so a write error surfaces at the
- * flush, not at the printf that queued the bytes. Every exit path that has
- * produced output goes through here.
- */
 static int output_failed(void)
 {
     return fflush(stdout) != 0 || ferror(stdout);
@@ -412,24 +396,14 @@ static int self_test(void)
     }
     return 1;
 }
-/* Iterative-deepening search, written from the student's specification:
- *  - a node is (permutation rank, orientation rank); moves are table lookups
- *  - h = max(perm_table[p], ori_table[o])
- *  - a move on the same face as the previous move is skipped
- *  - the stack holds the current path only; each frame records the move that
- *    led to it and the next move to try
- *  - a child is pushed only if f = g + h <= limit; otherwise f is remembered
- *    so that the next limit is the smallest f that exceeded the current one
- *  - the goal test and the node count happen when a node is entered
- *  - moves are tried in the fixed order 0..8; the search stops above 11
- */
+
 enum { MAX_DEPTH = 11, NO_MOVE = 255 };
 
 typedef struct {
-    uint16_t perm;     /* permutation rank of this node */
-    uint16_t ori;      /* orientation rank of this node */
-    uint8_t move;      /* move that led to this node, NO_MOVE for the root */
-    uint8_t next_move; /* next move to try from this node, 0..MOVES */
+    uint16_t perm;     
+    uint16_t ori;      
+    uint8_t move;      
+    uint8_t next_move; 
 } frame_t;
 
 static uint8_t heuristic(const uint8_t *perm_table, const uint8_t *ori_table,
@@ -439,10 +413,6 @@ static uint8_t heuristic(const uint8_t *perm_table, const uint8_t *ori_table,
     return hp > ho ? hp : ho;
 }
 
-/* Returns the solution length and fills solution[0..length-1] with move
- * numbers, or returns -1 if no solution is found within MAX_DEPTH.
- * *nodes receives the number of nodes entered over all iterations.
- */
 static int ida_search(uint16_t start_perm, uint16_t start_ori,
                       const uint8_t *perm_table, const uint8_t *ori_table,
                       uint8_t solution[MAX_DEPTH], uint64_t *nodes)
@@ -464,14 +434,14 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
 
         while (top >= 0) {
             frame_t *node = &stack[top];
-            if (node->next_move >= MOVES) { /* all moves tried: go back up */
+            if (node->next_move >= MOVES) { 
                 --top;
                 continue;
             }
             uint8_t move = node->next_move++;
             uint8_t face = (uint8_t) (move / 3U);
             if (node->move != NO_MOVE && node->move / 3U == face)
-                continue; /* same face as the previous move */
+                continue; 
 
             uint16_t p = node->perm, o = node->ori;
             for (uint8_t turn = 0; turn <= move % 3U; ++turn) {
@@ -479,7 +449,6 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
                 o = orientation[face][o];
             }
 
-            /* g of the child is top + 1 */
             uint8_t f = (uint8_t) (top + 1 +
                                    heuristic(perm_table, ori_table, p, o));
             if (f > limit) {
@@ -500,19 +469,15 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
                 return top;
             }
         }
-        limit = next_limit; /* UINT8_MAX if nothing was pruned: loop ends */
+        limit = next_limit; 
     }
     return -1;
 }
 
 int main(void)
 {
-    // Initialize global move lookup tables
     init_move_tables();
 
-    // ==========================================
-    // 1. Build and calculate Full Distance Table
-    // ==========================================
     uint8_t full_diameter;
     uint8_t *full_table = build_table(&full_diameter);
     if (!full_table) {
@@ -521,7 +486,7 @@ int main(void)
     }
 
     uint32_t full_counts[12] = {0}; 
-    uint64_t full_sum = 0; // Accumulate total distance
+    uint64_t full_sum = 0; 
     for (uint32_t i = 0; i < STATES; ++i) {
         uint8_t d = full_table[i];
         if (d <= 11) {
@@ -538,9 +503,6 @@ int main(void)
     double full_avg = (double)full_sum / STATES;
     printf("Full Average distance: %.3f\n\n", full_avg);
 
-    // ==========================================
-    // 2. Build and calculate Permutation Distance Table
-    // ==========================================
     uint8_t perm_diameter;
     uint8_t *perm_table = build_perm_table(&perm_diameter);
     if (!perm_table) {
@@ -550,7 +512,7 @@ int main(void)
     }
 
     uint32_t perm_counts[12] = {0}; 
-    uint64_t perm_sum = 0; // Accumulate total permutation distance
+    uint64_t perm_sum = 0; 
     for (uint32_t i = 0; i < PERMUTATIONS; ++i) {
         uint8_t d = perm_table[i];
         if (d < 12) {
@@ -568,11 +530,7 @@ int main(void)
     printf("Permutation Average distance: %.3f\n", perm_avg);
     printf("Average Underestimate (Gap): %.3f steps\n\n", full_avg - perm_avg);
 
-    // ==========================================
-    // 3. Gate H1 Check: Ensure h(s) <= d(s) for all states
-    // ==========================================
-
-    int h1_passed = 1; // 1 means true
+    int h1_passed = 1; 
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         uint8_t true_d = full_table[rank];
         uint16_t perm_rank = (uint16_t)(rank / ORIENTATIONS);
@@ -581,7 +539,7 @@ int main(void)
         if (h_val > true_d) {
             printf("H1 Check FAILED at rank %u: h(%u) = %u > true_d = %u\n", 
                    rank, perm_rank, h_val, true_d);
-            h1_passed = 0; // 0 means false
+            h1_passed = 0; 
             break;
         }
     }
@@ -590,7 +548,6 @@ int main(void)
         puts("=== Gate H1 Check PASSED: h(s) <= d(s) for all 3,674,160 states ===");
     }
 
-   // 4. Build and calculate Orientation Distance Table
     uint8_t ori_diameter;
     uint8_t *ori_table = build_ori_table(&ori_diameter);
 
@@ -604,7 +561,7 @@ int main(void)
     uint32_t ori_counts[12] = {0}; 
     uint64_t ori_sum = 0;
 
-    for (uint32_t i = 0; i < ORIENTATIONS; ++i) { // Make sure ORIENTATIONS is defined
+    for (uint32_t i = 0; i < ORIENTATIONS; ++i) { 
         uint8_t d = ori_table[i];
         if (d < 12) {
             ori_counts[d]++;
@@ -620,44 +577,37 @@ int main(void)
     double ori_avg = (double)ori_sum / ORIENTATIONS;
     printf("Orientation Average distance: %.3f\n\n", ori_avg);
 
-
-    // 5. Test H1 and combination strategies (Max vs. Sum)
     int ori_h1_passed = 1;
     int max_h1_passed = 1;
     int sum_h1_passed = 1;
     
-    uint64_t max_sum = 0; // Track total distance for Max strategy
+    uint64_t max_sum = 0; 
 
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         uint8_t true_d = full_table[rank];
         
-        // Extract permutation and orientation ranks
         uint16_t perm_rank = (uint16_t)(rank / ORIENTATIONS);
         uint16_t ori_rank = (uint16_t)(rank % ORIENTATIONS);
         
         uint8_t h_perm = perm_table[perm_rank];
         uint8_t h_ori = ori_table[ori_rank];
         
-        // Calculate both combinations
         uint8_t h_max = (h_perm > h_ori) ? h_perm : h_ori;
         uint8_t h_sum = h_perm + h_ori;
         
         max_sum += h_max;
 
-        // Check if orientation table alone passes H1
         if (h_ori > true_d && ori_h1_passed) {
             printf("Orientation H1 FAILED at rank %u: h_ori(%u) = %u > true_d(%u)\n", 
                    rank, ori_rank, h_ori, true_d);
             ori_h1_passed = 0;
         }
         
-        // Check if Max combination passes H1
         if (h_max > true_d && max_h1_passed) {
             printf("MAX H1 FAILED at rank %u\n", rank);
             max_h1_passed = 0;
         }
         
-        // Check if Sum combination passes H1 (print once on first failure)
         if (h_sum > true_d && sum_h1_passed) {
             printf("SUM H1 FAILED at rank %u: h_perm(%u) + h_ori(%u) = %u > true_d = %u\n", 
                    rank, h_perm, h_ori, h_sum, true_d);
@@ -678,11 +628,7 @@ int main(void)
         puts("=== SUM(perm, ori) H1 Check FAILED (As expected: Not Admissible) ===");
     }
 
-// ==========================================
-    // 6. Test IDA* Search Algorithm
-    // ==========================================
-
-        puts("\n=== Testing IDA* Search ===");
+    puts("\n=== Testing IDA* Search ===");
     {
         const state_t solved = {{0, 1, 2, 3, 4, 5, 6}, {0}};
         state_t tests[3];
@@ -691,7 +637,7 @@ int main(void)
         const int expected[3] = {0, 1, 11};
 
         tests[0] = solved;
-        tests[1] = apply_move(solved, 0); /* move 0 is R */
+        tests[1] = apply_move(solved, 0); 
         if (!parse_state("21345671111111", &tests[2])) {
             puts("ERROR: cannot parse 21345671111111");
             return 1;
@@ -713,7 +659,6 @@ int main(void)
                 printf(" %s", move_names[solution[i]]);
             puts("");
 
-            /* replay the solution and check that it reaches the solved state */
             state_t replay = tests[t];
             for (int i = 0; i < length; ++i)
                 replay = apply_move(replay, solution[i]);
@@ -732,50 +677,79 @@ int main(void)
     uint32_t count = 0;
 
     for (uint32_t rank = 0; rank < STATES; ++rank) {
-    // step 1：d= 11 , skip states whose distance is not 11
-    if (full_table[rank] != 11) continue;
+        if (full_table[rank] != 11) continue;
 
-    // step 2: rank -> perm and orientation 
-    uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
-    uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
+        uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
+        uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
 
-    // step 3：call ida_search
-    uint8_t test_solution[MAX_DEPTH];
-    uint64_t test_nodes = 0;
-    int test_length = ida_search(test_p, test_o, perm_table, ori_table,test_solution,&test_nodes);
+        uint8_t test_solution[MAX_DEPTH];
+        uint64_t test_nodes = 0;
+        int test_length = ida_search(test_p, test_o, perm_table, ori_table, test_solution, &test_nodes);
 
-    // step 4 : update 6 variables
-    if (test_length != 11) {
-    printf("ERROR: rank %u returned length %d\n", rank, test_length);
-    return 1;
+        if (test_length != 11) {
+            printf("ERROR: rank %u returned length %d\n", rank, test_length);
+            return 1;
+        }
+        count++;
+        total_nodes += test_nodes;
+        
+        if (test_nodes < min_nodes) {
+            min_nodes = test_nodes;
+            min_rank = rank;
+        }
+
+        if (test_nodes > max_nodes) {
+            max_nodes = test_nodes;
+            max_rank = rank;
+        }
     }
-    count++;
-    total_nodes += test_nodes;
-    
-    if (test_nodes < min_nodes) {
-        min_nodes = test_nodes;
-        min_rank = rank;
+
+    double average_nodes = (double)total_nodes / count;
+    printf("\n=== Distance-11 IDA* Statistics ===\n");
+    printf("Distance-11 states: %u\n", count);
+    printf("Minimum nodes: %llu (rank %u)\n", (unsigned long long)min_nodes, min_rank);
+    printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long)max_nodes, max_rank);
+    printf("Average nodes: %.3f\n", average_nodes);
+
+    {
+        uint64_t h3_total = 0;
+        uint64_t h3_max = 0;
+        uint32_t h3_max_rank = 0;
+        uint32_t h3_count = 0;
+
+        for (uint32_t rank = 0; rank < STATES; ++rank) {
+            uint16_t test_p = (uint16_t)(rank / ORIENTATIONS);
+            uint16_t test_o = (uint16_t)(rank % ORIENTATIONS);
+
+            uint8_t test_solution[MAX_DEPTH];
+            uint64_t test_nodes = 0;
+            int test_length = ida_search(test_p, test_o, perm_table, ori_table, test_solution, &test_nodes);
+
+            if (test_length != full_table[rank]) {
+                printf("H3 ERROR: rank %u returned %d, expected %u\n",
+                       rank, test_length, full_table[rank]);
+                return 1;
+            }
+
+            h3_count++;
+            h3_total += test_nodes;
+
+            if (test_nodes > h3_max) {
+                h3_max = test_nodes;
+                h3_max_rank = rank;
+            }
+        }
+
+        printf("\n=== Gate H3: IDA* length equals BFS distance ===\n");
+        printf("States checked: %u\n", h3_count);
+        printf("Total nodes: %llu\n", (unsigned long long) h3_total);
+        printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long) h3_max, h3_max_rank);
+        puts("=== Gate H3 PASSED ===");
     }
 
-    if (test_nodes > max_nodes) {
-        max_nodes = test_nodes;
-        max_rank = rank;
-    }
-}
-// print result
-double average_nodes = (double)total_nodes / count;
-printf("\n=== Distance-11 IDA* Statistics ===\n");
-printf("Distance-11 states: %u\n", count);
-printf("Minimum nodes: %llu (rank %u)\n", (unsigned long long)min_nodes, min_rank);
-printf("Maximum nodes: %llu (rank %u)\n", (unsigned long long)max_nodes, max_rank);
-printf("Average nodes: %.3f\n", average_nodes);
-
-
-    // Free all memory 
     free(ori_table);
     free(perm_table);
     free(full_table);
 
     return 0;
-
 }
