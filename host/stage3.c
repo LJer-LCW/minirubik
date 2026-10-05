@@ -444,8 +444,7 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
                 continue;
 
             uint8_t face = (uint8_t) (move >> 2U);
-            if (node->move != NO_MOVE && (node->move >> 2U) == face)
-                continue; 
+           if ((node->move >> 2U) == face) continue;
 
             uint16_t p = node->perm, o = node->ori;
             uint8_t turns = (uint8_t) (move & 3U);
@@ -471,7 +470,8 @@ static int ida_search(uint16_t start_perm, uint16_t start_ori,
             if (p == 0 && o == 0) {
                 for (int i = 1; i <= top; ++i) {
                     uint8_t m = stack[i].move;
-                    solution[i - 1] = (uint8_t) ((m >> 2U) * 3U + (m & 3U));
+                    uint8_t f = m >> 2U;
+                    solution[i - 1] = (uint8_t) ((f << 1) + f + (m & 3U));
                 }
                 return top;
             }
