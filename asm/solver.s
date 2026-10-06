@@ -10,164 +10,84 @@ solution: .zero 11
 main:
     j parse_state_setup
 
-
+# 待註解。
 rank_state:
-    la t3, state_perm # get state_perm start addr.
-    li a3, 7 # loop upper limit
-    li t0, 0 # permutation rank p
+    li a0, 0 # i = 0
+    jal a4, count_smaller 
+    mv a5, a0 # p = smaller for state_perm[0] 
 
-    lbu t4, 0(t3) # state_perm[0]
-    li t1, 1 # j = 1
-    add t2, t1, t3 #  state_perm[1] addr.
-    li t6, 0 # smaller = 0
+    li a0, 1 # i = 1 
+    jal a4, count_smaller
+    slli t0, a5, 2 # get 4p
+    slli t1, a5, 1 # get 2p
+    add t0, t0, t1 # 4p+2p = 6p
+    add a5, t0, a0 # p = p * 6 + smaller
 
-rank_p0_loop:
+    li a0, 2 # i=2
+    jal a4, count_smaller
+    slli t0, a5, 2 #4p
+    add t0, t0, a5 # 4p+p = 5p
+    add a5, t0, a0 # p = p * 5 + smaller
 
-    bge t1, a3, rank_p0_done # for loop (j<=6) == (j< 7)
-    lbu t5, 0(t2) # state_perm[j] 
-    bgeu t5, t4, rank_p0_next # if  state_perm[j]  >= state_perm[0],go to p[0] next
-    addi t6, t6, 1 # smaller++
+    li a0, 3 # i=3
+    jal a4, count_smaller 
+    slli t0, a5, 2 # 4p
+    add a5, t0, a0 # p = p * 4 + smaller
 
-rank_p0_next:
+    li a0, 4 # i = 4
+    jal a4, count_smaller
+    slli t0, a5, 1 # 2p
+    add t0, t0, a5 # 2p+p = 3p
+    add a5, t0, a0 # p = p * 3 + smaller
 
-    addi t1, t1, 1 
-    addi t2, t2, 1
-    j rank_p0_loop
+    li a0, 5 # i = 5
+    jal a4, count_smaller
+    slli t0, a5, 1 # 2p
+    add a5, t0, a0 # p = p * 2 + smaller
 
-rank_p0_done:
+    la t2, state_ori # ori start addr.
+    li t0, 0 # orientation rank o = 0
+    li t1, 0 # i = 0
+    li t6, 6 # u first 6 orientations (7th is determined by first 6)
 
-    addi t0, t6, 0 #p = smaller
-
-    lbu t4, 1(t3) # state_perm[1]
-    li t1, 2 # j = 2
-    add t2, t1, t3 #  state_perm[2] addr. 
-    li t6, 0 
-
-rank_p1_loop:
-
-    bge t1, a3, rank_p1_done
-    lbu t5, 0(t2)
-    bgeu t5, t4, rank_p1_next
-    addi t6, t6, 1
-
-rank_p1_next:
-
-    addi t1, t1, 1
-    addi t2, t2, 1
-    j rank_p1_loop
-
-rank_p1_done:
-
-    slli t4, t0, 2 # t4 = t0<<2 = 4t0= 4p
-    slli t5, t0, 1 # t5 = t0<<1 = 2p
-    add t4, t4, t5 #t4 = 6p now
-    add t0, t4, t6 # c code : p=p *6 + smaller
-
-    lbu t4, 2(t3) # state_perm[2]
-    li t1, 3 #t1 = 3
-    add t2, t1, t3 
-    li t6, 0
-
-rank_p2_loop:
-
-    bge t1, a3, rank_p2_done
-    lbu t5, 0(t2)
-    bgeu t5, t4, rank_p2_next
-    addi t6, t6, 1
-
-rank_p2_next:
-
-    addi t1, t1, 1
-    addi t2, t2, 1
-    j rank_p2_loop
-
-rank_p2_done:
-
-    slli t4, t0, 2 # (p<<2)
-    add t4, t4, t0 # (p<<2) +p
-    add t0, t4, t6 # (p<<2) +p + smaller
-
-    lbu t4, 3(t3)
-    li t1, 4
-    add t2, t3, t1
-    li t6, 0
-
-rank_p3_loop:
-
-    bge t1, a3, rank_p3_done
-    lbu t5, 0(t2)
-    bgeu t5, t4, rank_p3_next
-    addi t6, t6, 1
-
-rank_p3_next:
-    addi t1, t1, 1
-    addi t2, t2, 1
-    j rank_p3_loop
-
-rank_p3_done:
-    slli t4, t0, 2
-    add t0, t4, t6
-
-    lbu t4, 4(t3)
-    li t1, 5
-    add t2, t3, t1
-    li t6, 0
-
-
-rank_p4_loop:
-    bge t1, a3, rank_p4_done
-    lbu t5, 0(t2)
-    bgeu t5, t4, rank_p4_next
-    addi t6, t6, 1
-
-rank_p4_next:
-    addi t1, t1, 1
-    addi t2, t2, 1
-    j rank_p4_loop
-rank_p4_done:
-    slli t4, t0, 1
-    add t4, t4, t0
-    add t0, t4, t6
-
-    lbu t4, 5(t3)
-    li t1, 6
-    add t2, t3, t1
-    li t6, 0
-
-
-rank_p5_loop:
-    bge t1, a3, rank_p5_done
-    lbu t5, 0(t2)
-    bgeu t5, t4, rank_p5_next
-    addi t6, t6, 1
-rank_p5_next:
-    addi t1, t1, 1
-    addi t2, t2, 1
-    j rank_p5_loop
-rank_p5_done:
-    slli t4, t0, 1
-    add t0, t4, t6
-    addi a0, t0, 0 # a0 = permutation rank
-
-    la t2, state_ori
-    li t0, 0 # orientation rank
-    li t1, 0 # i
-    li t6, 6 # use only the first six orientations
-
-    
 rank_ori_loop:
-# c code : o = (o << 1) + o + state->o[i];
-    bge t1, t6, rank_ori_done
+    bge t1, t6, rank_ori_done # if i>=6, done
     add t3, t2, t1
     lbu t4, 0(t3)
-    slli t5, t0, 1
-    add t0, t0, t5
-    add t0, t0, t4
+    slli t5, t0, 1 # 2o
+    add t0, t0, t5 # 2o + o = 3o
+    add t0, t0, t4 # eo + state_ori[i]
     addi t1, t1, 1
     j rank_ori_loop
+
 rank_ori_done:
-    addi a1, t0, 0 # a1 = orientation rank
+    mv a0, a5 # a0 = permutation rank
+    mv a1, t0 # a1 = orientation rank
     ret
+
+count_smaller:
+
+    la t0, state_perm
+    add t1, t0, a0 # addr. of state_perm[i]
+    lbu t2, 0(t1) # comparison value p[i]
+    addi t1, t1, 1 # addr. of state_perm[i+1]
+    addi t3, a0, 1 # j = i+1
+    li t4, 7 # perm arr. length
+    li a0, 0 # smaller = 0
+
+count_smaller_loop:
+    bgeu t3, t4, count_smaller_done # if j >= 7, done
+    lbu t5, 0(t1)
+    bgeu t5, t2, count_smaller_next
+    addi a0, a0, 1
+
+count_smaller_next:
+    addi t1, t1, 1
+    addi t3, t3, 1
+    j count_smaller_loop
+
+count_smaller_done:
+    jr a4
 
 parse_state_setup:
 
