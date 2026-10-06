@@ -2863,8 +2863,70 @@ IDA_inner_loop:
     bgeu t0, s11, IDA_moves_done #if next_move >= 12, branch to ida_moves_done.
 
     #  next_move++, next round
-    addi t0, t0, 1
-    sb t0, 5(s8)
+    addi a2, t0, 1
+    sb a2, 5(s8) # next_move++
+
+    andi t2, t0, 3 # turns = move & 3
+    li t3, 3 # t3 = 3
+    beq t2, t3, IDA_inner_loop # turns==3 is not a valid move 
+
+    srli t1, t0, 2   # face = move >> 2
+    lbu t3, 4(s8) # read current frame's move (move offset : 4 , 1 byte)
+    srli t3, t3, 2    # prev_face = prev move >> 2
+    beq t1, t3, IDA_inner_loop  # c: same face shows up continuously, skip
+
+    # read orientation[move][top->ori]
+
+    lhu t3, 2(s8) # t3 = top->ori, ori at offset 2-3, 2 bytes , so lhu
+    # move * 2048 bytes, each move is corresponding to 1 row
+    # and each row has 1024 entries, and each is 2 bytes (uint16_t), 2048 = 2^11
+    slli t5, t0, 11        
+    slli t6, t3, 1  # ori * 2 bytes (uint16_t), ori*2 = ori << 1
+    add a1, s2, t5  # orientation base + move row offset
+    add a1, a1, t6  # + ori offset
+    lhu t4, 0(a1)   # t4 = orientation[move][top->ori]
+
+    lhu t3, 0(s8) # top->perm , perm offset is 0, 2 bytes
+    
+    # permutation[face] 
+    # each face has 8192 uint16_t entries, each entry has 2 bytes. 8192*2=16384=2^14
+    slli a2, t1, 14 
+    add a2, a2, s0 # permutation[face] addr.
+
+    li t6, 0 # turn = 0
+
+perm_turn_loop:
+    bltu t2, t6, perm_turn_done  # end when turn > turns
+
+    slli t5, t3, 1  # p * 2, each permutation entries is 2 bytes ( uint16_t )
+    add a1, a2, t5 # permutation[face][p] addr.
+    lhu t3, 0(a1) # p = permutation[face][p] (lh : 2 bytes)
+
+    addi t6, t6, 1 # ++turn
+    j perm_turn_loop
+
+perm_turn_done:
+    add a1, s1, t3 # perm_table + p addr.
+    lbu t5 , 0(a1) # hp = perm_table[p]
+
+    add a1, s4, t4 # ori_table + o addr.
+    lbu t6 , 0(a1) # ho = ori_table[o]
+
+    bltu t5, t6, heuristic_max_done # if hp <ho, t6 is larger.
+    mv t6, t5 # else, t6=hp
+
+heuristic_max_done:
+
+    addi t5, s9, 1 # depth +1
+    add t6, t6, t5 #depth+1+max(hp, ho)
+
+    mv a0, t6 # print f
+    li a7, 1
+    ecall
+    li a0, 32 # print space
+    li a7, 11
+    ecall
+
     j IDA_inner_loop
 
 IDA_moves_done:
