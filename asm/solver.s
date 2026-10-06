@@ -400,15 +400,63 @@ child_not_solved:
     j IDA_inner_loop
 
 found:
-    mv a0, s9   # step = depth
-    li a7, 1 # print int sys. call
-    ecall               
-    li a0, 0 # a0 = 0
-    li a7, 93 # end program sys. call
-    ecall     
+    addi a2, s5, 6 # a2 = stack[1] (frame size = 6 byte)
+    li a3, 0 # initialize index
 
+print_solution_loop:
+    bgeu a3, s9, print_solution_done # if output depth number of move, end loop
+    lbu t0, 4(a2)  # read frame.move (offset 4, 1 byte)
+    srli t1, t0, 2  # face = move >> 2
+    andi t2, t0, 3   # turn = move & 3
 
+    li t3, 82   # 'R' ASCII
+    beq t1, x0, print_face
+    li t3, 66   # 'B' ASCII
+    li t4, 1 # t4 = 1
+    beq t1, t4, print_face
+    li t3, 68   # 'D' ASCII 
 
+print_face:
+
+    mv a0, t3 # move ASCII in t3 to a0
+    li a7, 11 # sys. call, print single char
+    ecall
+
+    beq t2, x0, print_move_done # t2 is turn, if turn == 0, no suffix
+    li t3, 50   # 2 in ASCII
+    li t4, 1
+    beq t2, t4, print_suffix # if turn is 1 , print 2
+    li t3, 39 #  ' in ASCII
+
+print_suffix:
+
+    mv a0, t3 # move suffix to a0
+    li a7, 11 # sys. call, print single char
+    ecall
+
+print_move_done:
+    addi a2, a2, 6 # next frame(frame size is 6 bytes)
+    addi a3, a3, 1  # i++
+
+    bgeu a3, s9, print_solution_loop_done
+    li a0, 32  # print " " 
+    li a7, 11  # sys. call, print single char
+    ecall
+    j print_solution_loop
+
+print_solution_loop_done:
+    j print_solution_done
+
+print_solution_done:
+
+    li a0, 10  # C code '\n'
+    li a7, 11 # sys. call, print single char
+    ecall
+
+    li a0, 0  # end sucessfully
+    li a7, 93 # exit 
+    ecall
+ 
     j IDA_inner_loop
 
 IDA_moves_done:
