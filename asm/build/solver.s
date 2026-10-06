@@ -2616,10 +2616,25 @@ check_input:
     j exit_loop
 
 valid:
+    li t0, 0 # seen mask
+    li t1, 1 # bit base
+    li t3, 0 # i
+    li t6, 7 # number of cubies
+    la t2, state_perm
+valid_perm_loop:
+    bge t3, t6, valid_ori_setup
+    add t4, t2, t3
+    lbu t4, 0(t4) # p[i]
+    sll t5, t1, t4 # mask = 1 << p[i]
+    and t4, t0, t5
+    bnez t4, invalid # already seen
+    or t0, t0, t5 # mark p[i] as seen
+    addi t3, t3, 1
+    j valid_perm_loop
 
-    li t0, 0 # sum =0
+valid_ori_setup:
+    li t0, 0 # sum = 0
     li t1, 0 # i = 0
-    li t6, 7 # cubies number, t6 is unused
     la t2, state_ori
 CUBIES_loop: 
     bge t1, t6, valid_CUBIES_loop_setup # i>=CUBIES, exit
