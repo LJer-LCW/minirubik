@@ -504,8 +504,6 @@ Re_failed:
 Re_exit:
     li a7, 93
     ecall
- 
-    j IDA_inner_loop
 
 IDA_moves_done:
     beq s8, s5, IDA_round_done # root frame
@@ -520,56 +518,11 @@ IDA_round_done:
     li t0, 11 # t0 = 11
     bltu t0, s6, IDA_fail  # if limit > 11 , branch
     j IDA_loop_start        
-    j exit_loop
 
 IDA_fail:
     li a0, 1 # end code 1
     li a7, 93 # end program sys. call
     ecall  
-
-
-    # perm and ori table
-    la s2, perm_table
-    la s3, ori_table
-
-    # read perm table
-    add t0, s1, s2 # perm_table start addr. + perm rank p
-    lbu t1, 0(t0) # perm_table[p]
-
-    # read ori table
-    add t0, s0, s3 # ori_table start addr. + ori rank o
-    lbu t2, 0(t0) # ori_table[o]
-
-    bltu t1, t2, use_ho # if hp<ho, use ho
-    mv a0, t1 # otherwise, use hp
-    j heuristic_res
-
-use_ho:
-    mv a0, t2
-
-heuristic_res:
-    li a7, 1 # print int in Ripes
-    ecall
-    li a0, 32 # space's ASCII call, used between heuristic and ranks
-    li a7, 11
-    ecall
-
-
-    mv a0, s1
-    li a7, 1 # sys. call to print int
-    ecall
-
-    li a0, 32 # space's ASCII
-    li a7, 11 # print a0
-    ecall
-
-    mv a0, s0
-    li a7, 1
-    ecall
-    li a0, 10 # newline
-    li a7, 11
-    ecall
-    j exit_loop
 
 valid:
     li t0, 0 # seen mask
