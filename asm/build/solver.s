@@ -2551,7 +2551,7 @@ ori_table:      # 729 entries, 1 byte each
     .byte 4,5,3,5,5,4,3,4,4,4,5,4,4,5,4,5,6,5,4,5,5,4,4,5
     .byte 5,5,4,5,4,5,3,5,5
 .data
-msg: .string "213456711111111"
+msg: .string "21345661111111"
 
 state_perm: .zero 7
 state_ori: .zero 7
@@ -2616,6 +2616,35 @@ check_input:
     j exit_loop
 
 valid:
+
+    li t0, 0 # sum =0
+    li t1, 0 # i = 0
+    li t6, 7 # cubies number, t6 is unused
+    la t2, state_ori
+CUBIES_loop: 
+    bge t1, t6, valid_CUBIES_loop_setup # i>=CUBIES, exit
+    add t3, t1, t2 # addr. of state->o[i]
+    lbu t4, 0(t3) # state->o[i]
+    add t0, t0, t4 # sum + state->o[i]
+    addi t1, t1, 1 # ++i
+    j CUBIES_loop
+valid_CUBIES_loop_setup:
+    li t5, 3
+valid_while_sum:
+    bltu t0, t5, valid_sum_check # branch if sum is less than 3
+    addi t0, t0, -3 # sum-=3
+    j valid_while_sum
+valid_sum_check:
+    bnez t0, invalid #branch if  sum!=0
+    li a0, 1
+    ret
+
+invalid:
+    li a0, 0
+    ret
+
+
+
 
 
 exit_loop: 
