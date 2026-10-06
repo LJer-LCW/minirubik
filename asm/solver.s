@@ -3,6 +3,8 @@ msg: .string "@INPUT@"
 
 state_perm: .zero 7
 state_ori: .zero 7
+ida_stack: .zero 72
+solution: .zero 11
 
 .text
 main:
@@ -21,7 +23,7 @@ rank_state:
 
 rank_p0_loop:
 
-    bge t1, a3, rank_p0_done # for loop (i<6) == (i<= 7)
+    bge t1, a3, rank_p0_done # for loop (j<=6) == (j< 7)
     lbu t5, 0(t2) # state_perm[j] 
     bgeu t5, t4, rank_p0_next # if  state_perm[j]  >= state_perm[0],go to p[0] next
     addi t6, t6, 1 # smaller++
@@ -231,12 +233,106 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
+    la s5, ida_stack # stack base
+    sh a0, 0(s5) # root frame perm; keep unchanged during search
+    sh a1, 2(s5) # root frame ori; keep unchanged during search
+
+    # Root move stays fixed; reset root next_move at each IDA* iteration.
 
     # The s registers are to prevent the value be over written.
     mv s1, a0 # perm rank in a0
     mv s0, a1 # ori rank in a1 
 
-    # heuristic
+    # IDA* 
+    # s0 = permutation base
+    # s1 = perm_table base
+    # s2 = orientation base
+    # s3 = constant 3
+    # s4 = ori_table base
+    # s5 = ida stack base
+    # s6 = limit
+    # s7 = next_limit
+    # s8 = top
+    # s9 = depth
+    # s10 = solution base
+    # s11 = constant 12
+    # Temps: t0=move, t1=face, t2=turns, t3=p, t4=o, t5=h, t6=f, a1=address
+    # Extra : a2-a6
+    
+
+    # Frame layout (6 bytes per frame):
+    # offset  size(bytes)  field       load/store
+    # 0       2             perm        lhu / sh
+    # 2       2             ori         lhu / sh
+    # 4       1             move        lbu / sb
+    # 5       1             next_move   lbu / sb
+    
+
+
+    # heuristic 
+    #  IDA* setup
+    la s0, permutation # s0 = permutation base
+    la s1, perm_table # s1 = perm_table base
+    la s2, orientation # s2 = orientation base
+    li s3, 3 # s3 = constant 3
+    la s4 , ori_table # s4 = ori_table base
+    la s5, ida_stack # s5 = stack base
+    la s10, solution # s10 = solution base
+    li s11, 12 # s11 = constant 12
+
+    # set root = NO_MOVE
+    li t0, 255
+    sb t0, 4(s5) # move is 1 byte, and  its offset is 4
+
+    # limit = max(perm_table[p], ori_table[o])
+    lhu t3, 0(s5) # root perm rank size is 2 byte, so lhu
+    add a1, s1, t3 # perm_table[p] addr.
+    lbu t5, 0(a1) # hp = perm_table[p]
+
+    lhu t4, 2(s5)  # ori offset : 2-3, 2 bytes
+    add a1, s4, t4
+    lbu t6, 0(a1) 
+
+    bltu t5, t6, ida_limit_use_ho
+    mv s6, t5
+    j IDA_loop_start
+ida_limit_use_ho:
+    mv s6, t6
+
+IDA_loop_start:
+    li s7, 255   # next_limit max. 8 bit max is 255
+    mv s8, s5    # top = stack base
+    li s9, 0   # depth = 0
+    li t0, 0
+    sb t0, 5(s5)  # root next_move = 0
+
+IDA_inner_loop:
+    lbu t0, 5(s8)  # read top->next_move, next_move offset 5, and its size is 1 byte
+    bgeu t0, s11, IDA_moves_done #if next_move >= 12, branch to ida_moves_done.
+
+    #  next_move++, next round
+    addi t0, t0, 1
+    sb t0, 5(s8)
+    j IDA_inner_loop
+
+IDA_moves_done:
+    beq s8, s5, IDA_round_done # root frame
+
+    # non root nodes have no moves left, back to upper level
+    addi s8, s8, -6
+    addi s9, s9, -1
+    j IDA_inner_loop
+
+IDA_round_done:
+    mv a0, s7   # print next_limit
+    li a7, 1 # print int sys. call
+    ecall
+    li a0, 10               # newline's ASCII
+    li a7, 11 # print ASCII
+    ecall
+    j exit_loop
+
+
 
     # perm and ori table
     la s2, perm_table
