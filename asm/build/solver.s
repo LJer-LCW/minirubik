@@ -2783,9 +2783,21 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
+    mv s1, a0 # preserve permutation rank
     mv s0, a1 # preserve orientation rank
+    mv a0, s1
+    li a7, 1
+    ecall
+
+    li a0, 32 # space
+    li a7, 11
+    ecall
+    
     mv a0, s0
     li a7, 1
+    ecall
+    li a0, 10 # newline
+    li a7, 11
     ecall
     j exit_loop
 

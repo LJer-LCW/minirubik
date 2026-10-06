@@ -231,9 +231,23 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
-    mv s0, a1 # preserve orientation rank
+    # The s registers are to prevent the value be over written.
+    mv s1, a0 # perm rank in a0
+    mv s0, a1 # ori rank in a1 
+
+    mv a0, s1
+    li a7, 1 # sys. call to print int
+    ecall
+
+    li a0, 32 # space's ASCII
+    li a7, 11 # print a0
+    ecall
+
     mv a0, s0
     li a7, 1
+    ecall
+    li a0, 10 # newline
+    li a7, 11
     ecall
     j exit_loop
 
