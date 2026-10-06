@@ -231,9 +231,39 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
+
     # The s registers are to prevent the value be over written.
     mv s1, a0 # perm rank in a0
     mv s0, a1 # ori rank in a1 
+
+    # heuristic
+
+    # perm and ori table
+    la s2, perm_table
+    la s3, ori_table
+
+    # read perm table
+    add t0, s1, s2 # perm_table start addr. + perm rank p
+    lbu t1, 0(t0) # perm_table[p]
+
+    # read ori table
+    add t0, s0, s3 # ori_table start addr. + ori rank o
+    lbu t2, 0(t0) # ori_table[o]
+
+    bltu t1, t2, use_ho # if hp<ho, use ho
+    mv a0, t1 # otherwise, use hp
+    j heuristic_res
+
+use_ho:
+    mv a0, t2
+
+heuristic_res:
+    li a7, 1 # print int in Ripes
+    ecall
+    li a0, 32 # space's ASCII call, used between heuristic and ranks
+    li a7, 11
+    ecall
+
 
     mv a0, s1
     li a7, 1 # sys. call to print int

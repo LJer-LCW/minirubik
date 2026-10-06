@@ -2551,7 +2551,7 @@ ori_table:      # 729 entries, 1 byte each
     .byte 4,5,3,5,5,4,3,4,4,4,5,4,4,5,4,5,6,5,4,5,5,4,4,5
     .byte 5,5,4,5,4,5,3,5,5
 .data
-msg: .string "54721631111111"
+msg: .string "21345671111111"
 
 state_perm: .zero 7
 state_ori: .zero 7
@@ -2783,16 +2783,48 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
-    mv s1, a0 # preserve permutation rank
-    mv s0, a1 # preserve orientation rank
-    mv a0, s1
-    li a7, 1
-    ecall
 
-    li a0, 32 # space
+    # The s registers are to prevent the value be over written.
+    mv s1, a0 # perm rank in a0
+    mv s0, a1 # ori rank in a1 
+
+    # heuristic
+
+    # perm and ori table
+    la s2, perm_table
+    la s3, ori_table
+
+    # read perm table
+    add t0, s1, s2 # perm_table start addr. + perm rank p
+    lbu t1, 0(t0) # perm_table[p]
+
+    # read ori table
+    add t0, s0, s3 # ori_table start addr. + ori rank o
+    lbu t2, 0(t0) # ori_table[o]
+
+    bltu t1, t2, use_ho # if hp<ho, use ho
+    mv a0, t1 # otherwise, use hp
+    j heuristic_res
+
+use_ho:
+    mv a0, t2
+
+heuristic_res:
+    li a7, 1 # print int in Ripes
+    ecall
+    li a0, 32 # space's ASCII call, used between heuristic and ranks
     li a7, 11
     ecall
-    
+
+
+    mv a0, s1
+    li a7, 1 # sys. call to print int
+    ecall
+
+    li a0, 32 # space's ASCII
+    li a7, 11 # print a0
+    ecall
+
     mv a0, s0
     li a7, 1
     ecall
