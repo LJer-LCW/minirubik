@@ -234,10 +234,17 @@ check_input:
 
     jal ra, rank_state
     la s5, ida_stack # stack base
-    sh a0, 0(s5) # root frame perm; keep unchanged during search
-    sh a1, 2(s5) # root frame ori; keep unchanged during search
+    sh a0, 0(s5) # root frame perm
+    sh a1, 2(s5) # root frame ori
+    
+    bnez a0, root_not_solved
+    bnez a1, root_not_solved
+    li s9, 0   # solved, so step is 0
+    j found
 
-    # Root move stays fixed; reset root next_move at each IDA* iteration.
+root_not_solved:
+
+
 
     # The s registers are to prevent the value be over written.
     mv s1, a0 # perm rank in a0
@@ -385,6 +392,23 @@ IDA_path_f:
     sb t0, 4(s8) # child.move = move (offset 4, 1 byte)
     sb x0, 5(s8) # child.next_move = 0
 
+    bnez t3, child_not_solved
+    bnez t4, child_not_solved
+    j found  # p == 0 and  o == 0
+
+child_not_solved:
+    j IDA_inner_loop
+
+found:
+    mv a0, s9   # step = depth
+    li a7, 1 # print int sys. call
+    ecall               
+    li a0, 0 # a0 = 0
+    li a7, 93 # end program sys. call
+    ecall     
+
+
+
     j IDA_inner_loop
 
 IDA_moves_done:
@@ -396,14 +420,16 @@ IDA_moves_done:
     j IDA_inner_loop
 
 IDA_round_done:
-    mv a0, s7   # print next_limit
-    li a7, 1 # print int sys. call
-    ecall
-    li a0, 10               # newline's ASCII
-    li a7, 11 # print ASCII
-    ecall
+    mv s6, s7   # limit = next_limit
+    li t0, 11 # print ASCII
+    bltu t0, s6, IDA_fail  # if limit > 11 , branch
+    j IDA_loop_start        
     j exit_loop
 
+IDA_fail:
+    li a0, 1 # print int sys. call
+    li a7, 93 # end program sys. call
+    ecall  
 
 
     # perm and ori table
