@@ -368,12 +368,22 @@ heuristic_max_done:
     addi t5, s9, 1 # depth +1
     add t6, t6, t5 #depth+1+max(hp, ho)
 
-    mv a0, t6 # print f
-    li a7, 1
-    ecall
-    li a0, 32 # print space
-    li a7, 11
-    ecall
+    bltu s6, t6, IDA_path_e # if limit < f , go path e
+    j IDA_path_f # else f <= limit , go path f 
+
+IDA_path_e:
+    bgeu t6, s7, IDA_inner_loop # if f>= next_limit, no update
+    mv s7, t6 # next_limit = f
+    j IDA_inner_loop
+
+IDA_path_f:
+    addi s8, s8, 6 # top+6
+    addi s9, s9, 1 # depth +1
+
+    sh t3, 0(s8) # child.perm = p (offset 0, 2 bytes)
+    sh t4, 2(s8) # child.ori = o (offset 2, 2 bytes)
+    sb t0, 4(s8) # child.move = move (offset 4, 1 byte)
+    sb x0, 5(s8) # child.next_move = 0
 
     j IDA_inner_loop
 
