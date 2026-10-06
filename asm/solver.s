@@ -453,8 +453,56 @@ print_solution_done:
     li a7, 11 # sys. call, print single char
     ecall
 
-    li a0, 0  # end sucessfully
-    li a7, 93 # exit 
+    # Validate results inside the program rather than inspecting output by hand.
+    #  s5 : stack root frame, perm and ori are 2 bytes.
+    lhu t5, 0(s5) # re: perm = stack[0].perm
+    lhu t6, 2(s5) # re: ori = stack[0].ori
+
+    addi a2, s5, 6 # first sol frame: stack[1]
+    li a3, 0 # re: index
+
+Re_move_loop:
+    bgeu a3, s9, Re_moves_done
+    lbu t0, 4(a2) # read this frame's move , 1 byte , offset 4
+
+    # Re: orientation[move][o]
+
+    slli t4, t0, 11 # move * 2048 ( 1024 entries, 2 bytes for uint16_t )
+    slli t3, t6, 1 # o*2
+    add a1, s2, t4 
+    add a1, a1, t3 # get orientation[move][o]
+    lhu t6, 0(a1) 
+
+    # Re: permutation[face][p] 
+    srli t1, t0, 2 # face,move /4.  0 = R, 1 = B, 2 = D
+    andi t2, t0, 3 # turns, 3 in binary is 11. AND to get lower 2 bit, which is turn
+    slli t4, t1, 14 # each face has 8192 entries, each 2 bytes. 8192*2 = 2^14
+    add t4, s0, t4 # permutation[face] base
+    li t1, 0 # turn counter
+
+Re_perm_turn_loop:
+    bltu t2, t1, Re_perm_turn_done
+    slli t3, t5, 1 # p * sizeof(uint16_t)
+    add a1, t4, t3
+    lhu t5, 0(a1) # p = permutation[face][p]
+    addi t1, t1, 1
+    j Re_perm_turn_loop
+Re_perm_turn_done:
+    addi a2, a2, 6 # next frame
+    addi a3, a3, 1 # re index
+    j Re_move_loop
+
+Re_moves_done:
+    bnez t5, Re_failed
+    bnez t6, Re_failed
+    li a0, 0
+    j Re_exit
+
+Re_failed:
+    li a0, 1
+
+Re_exit:
+    li a7, 93
     ecall
  
     j IDA_inner_loop
@@ -469,13 +517,13 @@ IDA_moves_done:
 
 IDA_round_done:
     mv s6, s7   # limit = next_limit
-    li t0, 11 # print ASCII
+    li t0, 11 # t0 = 11
     bltu t0, s6, IDA_fail  # if limit > 11 , branch
     j IDA_loop_start        
     j exit_loop
 
 IDA_fail:
-    li a0, 1 # print int sys. call
+    li a0, 1 # end code 1
     li a7, 93 # end program sys. call
     ecall  
 

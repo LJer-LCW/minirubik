@@ -1,3 +1,8 @@
 Step 1: first complete assembly version
 21345671111111 -> R B' D2 R' B R' B' R D2 R B   iret 12888665
 54721631111111 -> B2 R' B R' D' B R2 B R B D'   iret 35246518
+
+Step 2: add the T5 replay check inside the program
+21345671111111 -> R B' D2 R' B R' B' R D2 R B   exit 0   iret 12888975
+54721631111111 -> B2 R' B R' D' B R2 B R B D'   exit 0   iret 35246828
+Negative test: replay without the last move -> exit 1, iret 12888952
