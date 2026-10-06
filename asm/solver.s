@@ -322,8 +322,7 @@ IDA_inner_loop:
     sb a2, 5(s8) # next_move++
 
     andi t2, t0, 3 # turns = move & 3
-    li t3, 3 # t3 = 3
-    beq t2, t3, IDA_inner_loop # turns==3 is not a valid move 
+    beq t2, s3, IDA_inner_loop # turns==3 is not a valid move
 
     srli t1, t0, 2   # face = move >> 2
     lbu t3, 4(s8) # read current frame's move (move offset : 4 , 1 byte)
