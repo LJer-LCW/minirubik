@@ -2551,7 +2551,7 @@ ori_table:      # 729 entries, 1 byte each
     .byte 4,5,3,5,5,4,3,4,4,4,5,4,4,5,4,5,6,5,4,5,5,4,4,5
     .byte 5,5,4,5,4,5,3,5,5
 .data
-msg: .string "21345661111111"
+msg: .string "54721631111111"
 
 state_perm: .zero 7
 state_ori: .zero 7
@@ -2783,6 +2783,10 @@ check_input:
     beqz a0, wrong_input # valid(state) = 0
 
     jal ra, rank_state
+    mv s0, a1 # preserve orientation rank
+    mv a0, s0
+    li a7, 1
+    ecall
     j exit_loop
 
 valid:
