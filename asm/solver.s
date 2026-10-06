@@ -312,7 +312,17 @@ IDA_inner_loop:
 
     #  next_move++, next round
     addi t0, t0, 1
-    sb t0, 5(s8)
+    sb t0, 5(s8) # next_move++
+
+    andi t2, t0, 3 # turns = move & 3
+    li t3, 3 # t3 = 3
+    beq t2, t3, IDA_inner_loop # turns==3 is not a valid move 
+
+    srli t1, t0, 2   # face = move >> 2
+    lbu t3, 4(s8) # read current frame's move (move offset : 4 , 1 byte)
+    srli t3, t3, 2    # prev_face = prev move >> 2
+    beq t1, t3, IDA_inner_loop  # c: same face shows up continuously, skip
+
     j IDA_inner_loop
 
 IDA_moves_done:
