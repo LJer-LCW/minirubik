@@ -1,0 +1,42 @@
+.data
+msg: .string "@INPUT@"
+
+state_perm: .zero 7
+state_ori: .zero 7
+
+.text
+main:
+	li t0, 0 # t0 for loop i = 0
+    li t1, 7 # t1 for loop upper limit
+    la t2, msg # t2 is string start addr. 
+    la t3, state_perm # t3 is  array start addr.
+
+parse_state_perm:
+
+    bge t0, t1, exit_loop
+    add t4, t0, t2 # string start addr + i
+    lbu t5, 0(t4) # load current string address 
+
+    li t6, 49 # '1''s ASCII code 
+	bltu t5, t6, wrong_input
+    li t6, 56 # '7''s ASCII code 
+    bgeu t5, t6, wrong_input
+
+    add t4, t0, t3 # array addr. to store , C code : state->p[i]
+    addi t5, t5, -49 # C code : input[i] - '1'
+    sb t5, 0(t4)
+
+    addi t0,t0, 1
+    j parse_state_perm
+
+exit_loop: 
+    
+    li a0, 0 # return 0
+    li a7, 93
+    ecall
+
+wrong_input:
+
+    li a0, 2 # return 2 if the input is wrong
+    li a7, 93
+    ecall
