@@ -3,6 +3,10 @@ msg: .string "@INPUT@"
 
 state_perm: .zero 7
 state_ori: .zero 7
+# RENDER_BEGIN
+replay_perm: .zero 7
+replay_ori: .zero 7
+# RENDER_END
 ida_stack: .zero 72
 solution: .zero 11
 
@@ -10,7 +14,6 @@ solution: .zero 11
 main:
     j parse_state_setup
 
-# 待註解。
 rank_state:
     li a0, 0 # i = 0
     jal a4, count_smaller 
@@ -151,8 +154,11 @@ check_input:
 
     jal ra, valid
     beqz a0, wrong_input # valid(state) = 0
-
+# RENDER_BEGIN
+    jal ra, render_start_state
+# RENDER_END
     jal ra, rank_state
+
     la s5, ida_stack # stack base
     sh a0, 0(s5) # root frame perm
     sh a1, 2(s5) # root frame ori
@@ -354,6 +360,95 @@ print_suffix:
     ecall
 
 print_move_done:
+# RENDER_BEGIN
+    lbu t0, 4(a2) # read frame.move (offset 4, 1 byte)
+    srli t1, t0, 2 # face = move >> 2
+    andi t2, t0, 3 # turns = move & 3
+    addi t3, t2, 1 # repeat turns + 1 times
+    la a0, replay_perm
+    la a1, replay_ori
+
+Re_apply_move_loop:
+    beqz t3, Re_move_done
+
+    la a0, replay_perm
+    la a1, replay_ori
+    li t0, 0 # inner counter i = 0
+    li a7, 7 # inner loop limit
+
+Re_apply_inner_loop:
+    bgeu t0, a7, Re_apply_copy
+
+    # byte index = face*7 + i
+    slli t5, t1, 2 # face*4
+    add t5, t5, t1 # face*5
+    slli t6, t1, 1 # face*2
+    add t5, t5, t6 # face*7
+    add t5, t5, t0
+    mv t2, t5 # preserve table index
+
+    la t6, render_source
+    add t6, t6, t2
+    lbu t6, 0(t6) # from = render_source[face*7+i]
+
+    la t5, state_perm
+    add t5, t5, t6
+    lbu t4, 0(t5) # perm = state_perm[from]
+    sb t4, 0(a0)
+    addi a0, a0, 1
+
+    la t5, state_ori
+    add t5, t5, t6
+    lbu t4, 0(t5) # ori = state_ori[from]
+
+    la t5, render_twist
+    add t5, t5, t2
+    lbu t6, 0(t5) # twist = render_twist[face*7+i]
+    add t4, t4, t6 # v = ori + twist
+    li t5, 3
+    bltu t4, t5, Re_store_ori
+    addi t4, t4, -3 # wrap v into 0..2
+
+Re_store_ori:
+    sb t4, 0(a1)
+    addi a1, a1, 1
+    addi t0, t0, 1
+    j Re_apply_inner_loop
+
+Re_apply_copy:
+    la t5, replay_perm
+    la t6, state_perm
+    li t0, 0 # i = 0
+    li a7, 7 # copy loop limit
+Re_copy_perm:
+    bgeu t0, a7, Re_copy_ori
+    lbu t4, 0(t5)
+    sb t4, 0(t6)
+    addi t5, t5, 1
+    addi t6, t6, 1
+    addi t0, t0, 1
+    j Re_copy_perm
+
+Re_copy_ori:
+    la t5, replay_ori
+    la t6, state_ori
+    li t0, 0 # i = 0
+Re_copy_ori_loop:
+    bgeu t0, a7, Re_render_after_turn
+    lbu t4, 0(t5)
+    sb t4, 0(t6)
+    addi t5, t5, 1
+    addi t6, t6, 1
+    addi t0, t0, 1
+    j Re_copy_ori_loop
+
+Re_render_after_turn:
+    addi t3, t3, -1
+    j Re_apply_move_loop
+
+Re_move_done:
+    jal ra, render_start_state
+# RENDER_END
     addi a2, a2, 6 # next frame(frame size is 6 bytes)
     addi a3, a3, 1  # i++
 
@@ -501,3 +596,85 @@ wrong_input:
     li a0, 2 # return 2 if the input is wrong
     li a7, 93
     ecall
+
+# RENDER_BEGIN
+render_start_state:
+    li a4, LED_MATRIX_0_BASE
+    la a5, render_color
+    la a6, render_offset
+    li a1, 7 # fixed cubie index and pos loop end
+    li t6, 3 # k loop end
+    li t0, 0 # pos = 0
+
+render_pos_loop:
+    blt a1, t0, render_done
+    beq t0, a1, render_fixed_cubie
+    la a0, state_perm
+    add a0, a0, t0
+    lbu t1, 0(a0) # c = state_perm[pos]
+    j render_load_ori
+
+render_fixed_cubie:
+    li t1, 7 # c = 7
+    li t2, 0 # o = 0
+    j render_k_init
+
+render_load_ori:
+    la a0, state_ori
+    add a0, a0, t0
+    lbu t2, 0(a0) # o = state_ori[pos]
+
+render_k_init:
+    li t3, 0 # k = 0
+
+render_k_loop:
+    bge t3, t6, render_next_pos
+
+    sub t4, t3, t2 # j = k - o
+    blt t4, x0, render_wrap
+    j render_color_index
+
+render_wrap:
+    addi t4, t4, 3
+
+render_color_index:
+    slli t5, t1, 1 # c * 2
+    add t5, t5, t1 # c * 3
+    add t5, t5, t4 # c * 3 + j
+    slli t5, t5, 2 # word index
+    add a0, a5, t5
+    lw a7, 0(a0) # color
+
+    slli t5, t0, 1 # pos * 2
+    add t5, t5, t0 # pos * 3
+    add t5, t5, t3 # pos * 3 + k
+    slli t5, t5, 1 # halfword index
+    add a0, a6, t5
+    lhu a0, 0(a0) # off = render_offset[pos*3 + k]
+    add a0, a4, a0 # p = LED_MATRIX_0_BASE + off
+
+    sw a7, 0(a0)
+    sw a7, 4(a0)
+    sw a7, 8(a0)
+    sw a7, 12(a0)
+    addi a0, a0, 140
+    sw a7, 0(a0)
+    sw a7, 4(a0)
+    sw a7, 8(a0)
+    sw a7, 12(a0)
+    addi a0, a0, 140
+    sw a7, 0(a0)
+    sw a7, 4(a0)
+    sw a7, 8(a0)
+    sw a7, 12(a0)
+
+    addi t3, t3, 1
+    j render_k_loop
+
+render_next_pos:
+    addi t0, t0, 1
+    j render_pos_loop
+
+render_done:
+    ret
+# RENDER_END
